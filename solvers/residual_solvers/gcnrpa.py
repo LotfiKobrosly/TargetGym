@@ -7,15 +7,10 @@ from classes.environment import EnvironmentWrapper
 from classes.continuous_dictionary import ContinuousGaussianDictionary
 from classes.gaussian_kernel import GaussianKernel
 from utils.models import code
-from utils.constants import (
-    ACTION_KEY,
-    RESET_KEY,
-    RELEVANCE_THRESHOLD,
-    HALF_LIFE_DIVIDER,
-)
+from utils.constants import RELEVANCE_THRESHOLD
 
 
-class GcNRPA_Policy:
+class Residual_GcNRPA_Policy:
 
     def __init__(
         self,
@@ -43,7 +38,7 @@ class GcNRPA_Policy:
         self.environment.reset()
         self.current_timestamp = 0
 
-    def train_full_gcnrpa_policy(self):
+    def train(self):
         dimension = len(self.environment.current_state)
         if self.residual_policy is None:
 
@@ -53,7 +48,7 @@ class GcNRPA_Policy:
             )
 
         self.pid = self.environment.get_pid()
-        best_score, best_sequence, best_actions = gcnrpa(
+        best_score, best_sequence, best_actions, policy = gcnrpa(
             environment=self.environment,
             pid=self.pid,
             level=self.level,
@@ -63,6 +58,9 @@ class GcNRPA_Policy:
             current_iteration=0,
             half_life_divider=self.half_life_divider,
         )
+        self.residual_policy = policy
+
+        return best_sequence, best_actions, best_score
 
     def __call__(self, observation):
         assert not (self.residual_policy is None), "GcNRPA has not been trained yet"
@@ -147,7 +145,8 @@ def adapt_policy(
 def gcnrpa(
     environment: EnvironmentWrapper,
     pid: target_gym.experts.pid.StatefulCascadedAltitudePID = None,
-    level: int = 1,
+    highest_level: int = 1,
+    current_level: int = 1,
     n_policies: int = 100,
     policy: dict = None,
     residual_range: float = 0.05,
@@ -156,7 +155,7 @@ def gcnrpa(
     *args,
     **kwargs,
 ):
-    if level == 0:
+    if current_level == 0:
         actions_sequence = list()
         sampling_radius = np.exp(-current_iteration / (n_policies / half_life_divider))
         environment.reset()
@@ -167,19 +166,28 @@ def gcnrpa(
                     code((*environment.current_state, environment.current_timestamp))
                 ]
                 assert not np.any(np.isnan(center)), "NaN found in policy"
-                action = jax.random.multivariate_normal(
-                    key=ACTION_KEY,
-                    mean=center,
-                    cov=sampling_radius * np.eye(max(center.shape)),
-                )
+                # print(center.shape)
+                if len(center.shape) == 0:
+                    action = (
+                        jax.random.normal(key=environment.jax_keys["action"]) - center
+                    ) * sampling_radius
+                else:
+                    action = jax.random.multivariate_normal(
+                        key=environment.jax_keys["action"],
+                        mean=center,
+                        cov=sampling_radius * np.eye(max(center.shape)),
+                    )
             else:
                 action = jax.random.uniform(
-                    key=ACTION_KEY, shape=pid_action.shape, minval=-1.0, maxval=1.0
+                    key=environment.jax_keys["action"],
+                    shape=pid_action.shape,
+                    minval=-1.0,
+                    maxval=1.0,
                 )
 
             environment.step(pid_action + residual_range * action)
             actions_sequence.append(action)
-        return environment.score, environment.sequence, actions_sequence
+        return environment.score, environment.sequence, actions_sequence, policy
 
     else:
         new_policy = deepcopy(policy)
@@ -190,10 +198,11 @@ def gcnrpa(
         for iteration in range(n_policies):
             environment.reset()
             pid.reset()
-            score, sequence, actions = gcnrpa(
+            score, sequence, actions, new_policy = gcnrpa(
                 environment,
                 pid,
-                level - 1,
+                highest_level,
+                current_level - 1,
                 n_policies,
                 new_policy,
                 residual_range,
@@ -216,33 +225,7 @@ def gcnrpa(
             best_sequence,
             learning_rate,
         )
+        if highest_level == current_level:
+            policy = new_policy
 
-        return best_score, best_sequence, best_actions
-
-
-def run_residual_gcnrpa(
-    environment: EnvironmentWrapper,
-    level: int = 1,
-    residual_range: float = 0.05,
-    n_policies: int = 100,
-    half_life_divider: int = 10,
-):
-    dimension = len(environment.current_state)
-    kernel_radius = 0.1
-    policy = instantiate_policy(
-        kernel_radius=kernel_radius,
-    )
-    pid = environment.get_pid()
-    # environment.allow_truncation()
-    best_score, best_sequence, best_actions = gcnrpa(
-        environment,
-        pid,
-        level,
-        n_policies,
-        policy,
-        residual_range,
-        0,
-        half_life_divider,
-    )
-    # environment.disallow_truncation()
-    return best_sequence, best_actions, best_score
+        return best_score, best_sequence, best_actions, policy

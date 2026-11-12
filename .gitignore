@@ -3,3 +3,5 @@
 *.pyc
 target/*
 *.txt
+*.xlsx
+

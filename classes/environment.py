@@ -76,13 +76,11 @@ class EnvironmentWrapper:
         if not isinstance(action, np.ndarray):
             action = np.array([action])
         action = action.flatten()
-        # print(action.shape)
-        # print("Here: ", type(self.current_state))
         observation, new_state, reward, terminated, info = self.environment.step_env(
             self.jax_keys["step"],
             self.current_hidden_state,
             action,
-            # params=self.parameters,
+            params=self.parameters,
         )
         observation = code(observation)
         if self.truncate:

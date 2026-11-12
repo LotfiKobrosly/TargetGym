@@ -22,16 +22,20 @@ class ContinuousGaussianDictionary(dict):
             values, weights = list(), list()
             n_relevant_elements = 0
             for other_key in self.keys():
-                action_shape = len(
-                    np.reshape(list(dict.__getitem__(self, other_key)), (-1, 1))
-                )
+                value = dict.__getitem__(self, other_key)
+                if len(np.shape(value)) == 0:
+                    action_shape = 1
+                    value = [value]
+                else:
+                    action_shape = len(
+                        np.reshape(list(dict.__getitem__(self, other_key)), (-1, 1))
+                    )
+                    value = list(value)
                 if (
                     np.linalg.norm(np.array(other_key) - np.array(position))
                     <= RELEVANCE_THRESHOLD
                 ):
-                    values.append(
-                        np.asarray(list(dict.__getitem__(self, other_key))).flatten()
-                    )
+                    values.append(np.asarray(value).flatten())
                     weights.append(kernel.pdf(other_key))
                     n_relevant_elements += 1
 
