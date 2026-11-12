@@ -1,4 +1,4 @@
-./scratch*
-**pycache**
+*scratch*
+*_pycache_*
 target/*
 *.txt
