@@ -7,7 +7,71 @@ from classes.environment import EnvironmentWrapper
 from classes.continuous_dictionary import ContinuousGaussianDictionary
 from classes.gaussian_kernel import GaussianKernel
 from utils.models import code
-from utils.constants import ACTION_KEY, RESET_KEY, RELEVANCE_THRESHOLD, HALF_LIFE_DIVIDER
+from utils.constants import (
+    ACTION_KEY,
+    RESET_KEY,
+    RELEVANCE_THRESHOLD,
+    HALF_LIFE_DIVIDER,
+)
+
+
+class GcNRPA_Policy:
+
+    def __init__(
+        self,
+        environment: EnvironmentWrapper,
+        level: int,
+        n_policies: int,
+        residual_range: float = 0.05,
+        half_life_divider: int = 10,
+    ):
+        self.environment = environment
+        self.level = level
+        self.n_policies = n_policies
+        self.residual_range = residual_range
+        self.half_life_divider = half_life_divider
+        self.residual_policy = None
+        self.current_timestamp = 0
+        self.pid = self.environment.get_pid()
+
+    def reset(self, jax_keys: dict = None):
+
+        if not (jax_keys is None):
+            self.environment.jax_keys = jax_keys
+
+        self.pid.reset()
+        self.environment.reset()
+        self.current_timestamp = 0
+
+    def train_full_gcnrpa_policy(self):
+        dimension = len(self.environment.current_state)
+        if self.residual_policy is None:
+
+            kernel_radius = 0.1
+            self.residual_policy = instantiate_policy(
+                kernel_radius=kernel_radius,
+            )
+
+        self.pid = self.environment.get_pid()
+        best_score, best_sequence, best_actions = gcnrpa(
+            environment=self.environment,
+            pid=self.pid,
+            level=self.level,
+            n_policies=self.n_policies,
+            policy=self.residual_policy,
+            residual_range=self.residual_range,
+            current_iteration=0,
+            half_life_divider=self.half_life_divider,
+        )
+
+    def __call__(self, observation):
+        assert not (self.residual_policy is None), "GcNRPA has not been trained yet"
+        controller_action = self.pid(np.asarray(observation)).flatten()
+        residual_action = self.residual_policy[
+            (*observation, self.current_timestamp)
+        ].flatten()
+        self.current_timestamp += 1
+        return controller_action + self.residual_range * residual_action
 
 
 def instantiate_policy(
@@ -38,12 +102,14 @@ def adapt_policy(
             current_state = code((*state, timestamp))
             if current_state in policy.keys():
                 new_move = np.reshape(new_move, policy[current_state].shape)
-                policy[current_state] += learning_rate * (new_move - policy[current_state])
+                policy[current_state] += learning_rate * (
+                    new_move - policy[current_state]
+                )
             else:
                 policy[current_state] = new_move
-            assert not np.any(np.isnan(policy[current_state])), "NaN in adaptation " + str(
-                policy[current_state]
-            )
+            assert not np.any(
+                np.isnan(policy[current_state])
+            ), "NaN in adaptation " + str(policy[current_state])
 
         # Adapting nearby states
         for state in policy.keys():
@@ -70,9 +136,7 @@ def adapt_policy(
                     np.any(np.isnan(weights))
                 ), "NaN in weights in adaptation " + str(weights)
                 new_move = weights.T @ np.array(relevant_actions)
-                assert not np.any(
-                    np.isnan(new_move)
-                ), "NaN in computing new move"
+                assert not np.any(np.isnan(new_move)), "NaN in computing new move"
                 new_move = np.reshape(new_move, policy[state].shape)
                 policy[state] += learning_rate * (new_move - policy[state])
     else:
@@ -89,6 +153,8 @@ def gcnrpa(
     residual_range: float = 0.05,
     current_iteration: int = 0,
     half_life_divider: int = None,
+    *args,
+    **kwargs,
 ):
     if level == 0:
         actions_sequence = list()
@@ -97,7 +163,9 @@ def gcnrpa(
         while not environment.is_final():
             pid_action = pid(np.asarray(environment.current_state))
             if len(policy) > 0:
-                center = policy[code((*environment.current_state, environment.current_timestamp))]
+                center = policy[
+                    code((*environment.current_state, environment.current_timestamp))
+                ]
                 assert not np.any(np.isnan(center)), "NaN found in policy"
                 action = jax.random.multivariate_normal(
                     key=ACTION_KEY,
@@ -105,7 +173,9 @@ def gcnrpa(
                     cov=sampling_radius * np.eye(max(center.shape)),
                 )
             else:
-                action = jax.random.uniform(key=ACTION_KEY, shape=pid_action.shape, minval=-1.0, maxval=1.0)
+                action = jax.random.uniform(
+                    key=ACTION_KEY, shape=pid_action.shape, minval=-1.0, maxval=1.0
+                )
 
             environment.step(pid_action + residual_range * action)
             actions_sequence.append(action)
@@ -141,7 +211,10 @@ def gcnrpa(
                 learning_rate,
             )
         adapt_policy(
-            policy, best_actions, best_sequence, learning_rate,
+            policy,
+            best_actions,
+            best_sequence,
+            learning_rate,
         )
 
         return best_score, best_sequence, best_actions

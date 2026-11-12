@@ -1,19 +1,25 @@
+"""
+Implements a wrapper for the target_gym.env class to enable the storage of the sequences of observations and actions.
+This helps keep track of the needed information for the MCTS-based algorithms
+"""
+
+from copy import deepcopy
 import numpy as np
 import matplotlib.pyplot as plt
 import jax
 
-from utils.constants import RESET_KEY, ACTION_KEY, STEP_KEY, RANDOM_SEED
 from utils.models import code
 
 
 class EnvironmentWrapper:
     def __init__(
-        self, environment, parameters, simulation_horizon: float,
+        self, environment, parameters, simulation_horizon: float, jax_keys: dict
     ):
         self.environment = environment
         self.parameters = parameters
+        self.jax_keys = deepcopy(jax_keys)
         # Initialize the environment
-        observation, info = environment.reset(key=RESET_KEY)
+        observation, info = environment.reset(key=self.jax_keys["reset"])
         self.current_state = code(observation)
         self.sequence = [self.current_state]
         self.best_sequence = [self.current_state]
@@ -38,7 +44,9 @@ class EnvironmentWrapper:
         self.truncate = False
 
     def reset(self):
-        observation, state = self.environment.reset(key=RESET_KEY)
+        observation, state = self.environment.reset(
+            self.jax_keys["reset"], self.parameters
+        )
         observation = code(observation)
         if self.truncate:
             observation = self.truncate_observation(observation)
@@ -55,7 +63,7 @@ class EnvironmentWrapper:
         self.done = False
         self.score = 0
 
-    def truncate_observation(self, observation):
+    def truncate_observation(self, observation: np.ndarray):
         new_observation = tuple()
         for component_index, component in enumerate(observation):
             if component > 2:
@@ -64,14 +72,14 @@ class EnvironmentWrapper:
                 new_observation = new_observation, -1
         return new_observation
 
-    def step(self, action):
+    def step(self, action: np.ndarray):
         if not isinstance(action, np.ndarray):
             action = np.array([action])
         action = action.flatten()
         # print(action.shape)
         # print("Here: ", type(self.current_state))
         observation, new_state, reward, terminated, info = self.environment.step_env(
-            STEP_KEY,
+            self.jax_keys["step"],
             self.current_hidden_state,
             action,
             # params=self.parameters,
@@ -88,15 +96,12 @@ class EnvironmentWrapper:
         self.current_hidden_state = new_state
         self.score += reward
 
-    def sample_random_action(self, n_samples):
-        keys = jax.random.split(ACTION_KEY, n_samples)
+    def sample_random_action(self, n_samples: int):
+        keys = jax.random.split(self.jax_keys["action"], n_samples)
         if n_samples == 1:
-            return self.environment.action_space().sample(key=ACTION_KEY)
+            return self.environment.action_space().sample(key=self.jax_keys["action"])
         else:
-            return [
-                self.environment.action_space().sample(key=key)
-                for key in keys
-            ]
+            return [self.environment.action_space().sample(key=key) for key in keys]
 
     def close(self):
         self.environment.close()

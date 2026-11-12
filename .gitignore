@@ -1,4 +1,5 @@
 *scratch*
-*_pycache_*
+*pycache*
+*.pyc
 target/*
 *.txt

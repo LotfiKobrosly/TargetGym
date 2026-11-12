@@ -38,12 +38,14 @@ def adapt_policy(
             current_state = code((*state, timestamp))
             if current_state in policy.keys():
                 new_move = np.reshape(new_move, policy[current_state].shape)
-                policy[current_state] += learning_rate * (new_move - policy[current_state])
+                policy[current_state] += learning_rate * (
+                    new_move - policy[current_state]
+                )
             else:
                 policy[current_state] = new_move
-            assert not np.any(np.isnan(policy[current_state])), "NaN in adaptation " + str(
-                policy[current_state]
-            )
+            assert not np.any(
+                np.isnan(policy[current_state])
+            ), "NaN in adaptation " + str(policy[current_state])
 
         # Adapting nearby states
         for state in policy.keys():
@@ -70,9 +72,7 @@ def adapt_policy(
                     np.any(np.isnan(weights))
                 ), "NaN in weights in adaptation " + str(weights)
                 new_move = weights.T @ np.array(relevant_actions)
-                assert not np.any(
-                    np.isnan(new_move)
-                ), "NaN in computing new move"
+                assert not np.any(np.isnan(new_move)), "NaN in computing new move"
                 new_move = np.reshape(new_move, policy[state].shape)
                 policy[state] += learning_rate * (new_move - policy[state])
     else:
@@ -94,7 +94,9 @@ def cnrpa(
         while not environment.is_final():
 
             if len(policy) > 0:
-                center = policy[code((*environment.current_state, environment.current_timestamp))]
+                center = policy[
+                    code((*environment.current_state, environment.current_timestamp))
+                ]
                 assert not np.any(np.isnan(center)), "NaN found in policy"
                 action = jax.random.multivariate_normal(
                     key=ACTION_KEY,
@@ -133,9 +135,7 @@ def cnrpa(
                 best_sequence,
                 learning_rate,
             )
-        adapt_policy(
-            policy, best_actions, best_sequence, learning_rate
-        )
+        adapt_policy(policy, best_actions, best_sequence, learning_rate)
 
         return best_score, best_sequence, best_actions
 

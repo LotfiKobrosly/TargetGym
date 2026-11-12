@@ -8,6 +8,7 @@ from utils.models import code
 from utils.constants import ACTION_KEY, RELEVANCE_THRESHOLD, HALF_LIFE_DIVIDER
 from solvers.cnrpa import adapt_policy, instantiate_policy
 
+
 def gcgnrpa(
     environment: EnvironmentWrapper,
     level: int = 1,
@@ -17,8 +18,8 @@ def gcgnrpa(
     current_iteration: int = 0,
     full_area: float = None,
     half_life_divider: int = None,
-    tau: float = 1.,
-    bias_provider = None,
+    tau: float = 1.0,
+    bias_provider=None,
 ):
     if level == 0:
         sampling_radius = np.exp(-current_iteration / (n_policies / half_life_divider))
@@ -33,8 +34,8 @@ def gcgnrpa(
             # Policy or random
             if len(policy) > 0:
                 policy_action = policy[code(environment.current_state)]
-                assert not np.any(np.isnan(policy_action)), "NaN found in policy"                
-                
+                assert not np.any(np.isnan(policy_action)), "NaN found in policy"
+
             else:
                 policy_action = environment.sample_random_action(n_samples=1)
 
@@ -97,7 +98,7 @@ def run_gcgnrpa(
     n_policies: int = 100,
     policy_type: str = "by_region",
     half_life_divider: int = 10,
-    tau: float = 1.,
+    tau: float = 1.0,
 ):
     dimension = len(environment.current_state)
     kernel_radius = 0.3

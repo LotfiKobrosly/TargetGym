@@ -22,9 +22,16 @@ class ContinuousGaussianDictionary(dict):
             values, weights = list(), list()
             n_relevant_elements = 0
             for other_key in self.keys():
-                action_shape = (len(np.reshape(list(dict.__getitem__(self, other_key)), (-1, 1))))
-                if np.linalg.norm(np.array(other_key) - np.array(position)) <= RELEVANCE_THRESHOLD:
-                    values.append(np.asarray(list(dict.__getitem__(self, other_key))).flatten())
+                action_shape = len(
+                    np.reshape(list(dict.__getitem__(self, other_key)), (-1, 1))
+                )
+                if (
+                    np.linalg.norm(np.array(other_key) - np.array(position))
+                    <= RELEVANCE_THRESHOLD
+                ):
+                    values.append(
+                        np.asarray(list(dict.__getitem__(self, other_key))).flatten()
+                    )
                     weights.append(kernel.pdf(other_key))
                     n_relevant_elements += 1
 
@@ -44,9 +51,10 @@ class ContinuousGaussianDictionary(dict):
                 returned_action = np.dot(weights.T, values)
                 # print(returned_action.shape)
 
-                return returned_action#.flatten()
+                return returned_action  # .flatten()
             else:
                 return RANDOM_STATE.uniform(-1, 1, size=action_shape)
+
     def __setitem__(self, key, value):
         dict.__setitem__(self, key, value)
 
