@@ -144,7 +144,7 @@ def adapt_policy(
 
 def gcnrpa(
     environment: EnvironmentWrapper,
-    pid: target_gym.experts.pid.StatefulCascadedAltitudePID = None,
+    pid: target_gym.experts.pid = None,
     highest_level: int = 1,
     current_level: int = 1,
     n_policies: int = 100,
